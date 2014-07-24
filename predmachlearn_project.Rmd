@@ -1,0 +1,133 @@
+---
+title: "Coursera - Practical Machine Learning - Course Project"
+output: html_document
+---
+## Executive summary
+This project analyses the data provided in the Weight Lifting Exercise Dataset. Its goal is to build a model to predict how the observed subjects performed physical exercises (five levels from A to E).
+
+## Building the prediction model
+#### Loading the data
+We assume that the data files are in the working directory.
+
+```{r}
+train.raw <- read.csv("pml-training.csv", na.strings=c("NA",""), header=TRUE)
+test.raw <- read.csv("pml-testing.csv", na.strings=c("NA",""), header=TRUE)
+
+dim(train.raw)
+```
+ We can see that the raw training data contains 19622 rows and 160 columns.
+
+####Load the required libraries
+```{r}
+library(caret)
+library(rpart)
+set.seed(123) #set seed for reproducible results
+```
+
+#### Choosing relevant predictors
+Our model should predict the outcome "classe" (five levels from A to E). Having analyzed the raw data, we conclude that many columns have missing values (NA or are blank). In fact, almost all the  values in these columns are missing. Some of these columns contain information which can be derived from other columns (for example, columns containing the standard deviation and variance) and are often left blank. We decided to exclude these variables from the list of potential predictors.
+
+Also, we can see that some columns contain non-numeric data (such as 'user-name', 'new_window', etc.) or information which might not be relevant (such as 'timestamp'). We decided to exclude these columns too.
+
+Below you will find the list of predictors which we decided to use (the last variable is 'classe' and is the outcome):
+```{r}
+significant.features <- c("roll_belt", "pitch_belt", "yaw_belt", "total_accel_belt", 
+                           "gyros_belt_x", "gyros_belt_y", "gyros_belt_z",
+                           "accel_belt_x", "accel_belt_y", "accel_belt_z",
+                           "magnet_belt_x", "magnet_belt_y", "magnet_belt_z",
+                           "roll_arm", "pitch_arm", "yaw_arm",
+                           "gyros_arm_x", "gyros_arm_y", "gyros_arm_z", 
+                           "accel_arm_x", "accel_arm_y", "accel_arm_z",
+                           "magnet_arm_x", "magnet_arm_y", "magnet_arm_z",
+                           "roll_dumbbell", "pitch_dumbbell", "yaw_dumbbell",
+                           "gyros_dumbbell_x", "gyros_dumbbell_y", "gyros_dumbbell_z",
+                           "accel_dumbbell_x", "accel_dumbbell_y", "accel_dumbbell_z",
+                           "magnet_dumbbell_x", "magnet_dumbbell_y", "magnet_dumbbell_z",
+                           "roll_forearm", "pitch_forearm", "yaw_forearm",
+                           "gyros_forearm_x", "gyros_forearm_y", "gyros_forearm_z",
+                           "accel_forearm_x", "accel_forearm_y", "accel_forearm_z",
+                           "magnet_forearm_x", "magnet_forearm_y", "magnet_forearm_z",
+                           "classe")
+
+training <- train.raw[,significant.features]
+dim(training)
+```
+
+## Splitting the training data set into two data sets for training and validation - cross validation
+In order to perform cross validation we decided to split the training data set into two data sets: for training (60% of the data) and validation (testing inside the training data set) (40%).
+
+```{r}
+inTrain = createDataPartition(training$classe, p = 0.6)[[1]]
+training = training[inTrain,]
+validation = train.raw[-inTrain,]
+```
+
+
+## Choosing the prediction method
+Taking into account that our models contains 49 predictors, we decided to choose the **Random Forest method** which is particlularly efficient in dealing with a large number of predictors.
+
+## Training the prediction model
+Using the Random Forest method, we decided to preprocess data (center and scale) and use training control (cross validation with number of iterations equal to 4) for efficiency (without these measures the model took far too long to be built on the entire training set):
+```{r}
+modFit <- train(classe ~ ., method="rf", preProcess=c("center", "scale"),
+                 trControl=trainControl(method = "cv", number = 4), data=training)
+```
+Random Forest accuracy
+```{r}
+plot(modFit, log = "y", lwd = 2, main = "Random forest accuracy vs number of predictiors",
+     xlab = "Predictors",  ylab = "Accuracy")
+
+```
+
+```{r}
+print(modFit)
+```
+
+We can see (on the above plot and in the model print out) that a **model with the number of variables per level (mtry) = 25 was selected as the optimal one**.
+
+## Estimating variable importance
+```{r}
+vI <- varImp(modFit)
+vI
+```
+Top 10 most important variables
+```{r}
+plot(vI, main = "Top 10 Variable Importance", top = 10)
+```
+
+## Applying the model to the validation set
+Let us apply our model to the validation set in order to check its performance.
+
+```{r}
+validation <- validation[,significant.features]
+#exclude the last column 'classe' which is the outcome
+predictions <- predict(modFit,newdata=validation[,-ncol(validation)])
+cm <- confusionMatrix(predictions, validation$classe)
+print(cm)
+```
+Accuracy of the final Model
+```{r}
+round(cm$overall['Accuracy'], 4)
+```
+The accuracy is approximately 99%.
+
+## Out of sample error
+Error of the model on the new data.
+```{r}
+1 - 0.9915
+```
+The out of sample error is approximately 1%
+
+## Prediction on the test set
+```{r}
+testing <- test.raw[,significant.features[-length(significant.features)]]
+predictions.testing <- predict(modFit, newdata=testing)
+predictions.testing
+```
+
+## Conclusion
+The Random Forest algorithm is rather efficient for predicting how the observed subjects performed physical exercises based on the selected features and using an unseen data set.
+The **accuracy on the validation (unseen) data is approximately 99% and the out of sample error is approximately 1%**. The model also performed well on the testing data which was submitted as the second part of the course project.
+
+
+
